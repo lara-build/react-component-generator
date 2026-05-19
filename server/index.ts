@@ -210,14 +210,13 @@ async function* streamAnthropic(prompt: string, apiKey: string): AsyncGenerator<
 }
 
 async function* streamGoogle(prompt: string, apiKey: string): AsyncGenerator<string> {
-  const model = 'gemini-3.1-flash-lite';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent`;
+  const model = 'gemini-2.0-flash-lite';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey,
     },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
@@ -227,7 +226,8 @@ async function* streamGoogle(prompt: string, apiKey: string): AsyncGenerator<str
   });
 
   if (!response.ok) {
-    throw new Error(`Gemini API error: ${response.status}`);
+    const err = await response.text();
+    throw new Error(`Gemini API error: ${response.status} - ${err}`);
   }
 
   const reader = response.body!.getReader();
@@ -239,42 +239,42 @@ async function* streamGoogle(prompt: string, apiKey: string): AsyncGenerator<str
     if (done) break;
 
     buffer += decoder.decode(value, { stream: true });
-    const events = buffer.split('\n\n');
-    buffer = events.pop()!;
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
 
-    for (const event of events) {
-      const dataLine = event.split('\n').find((l) => l.startsWith('data: '));
-      if (!dataLine) continue;
+    for (const line of lines) {
+      if (!line.trim()) continue;
 
       let parsed: unknown;
       try {
-        parsed = JSON.parse(dataLine.slice(6).trim());
+        parsed = JSON.parse(line.trim());
       } catch {
         continue;
       }
 
-      const candidate =
+      const candidates =
         parsed !== null &&
         typeof parsed === 'object' &&
-        'candidates' in parsed
-          ? (parsed as Record<string, unknown>).candidates
+        'candidates' in parsed &&
+        Array.isArray((parsed as Record<string, unknown>).candidates)
+          ? ((parsed as Record<string, unknown>).candidates as unknown[])
           : null;
 
-      if (!Array.isArray(candidate) || candidate.length === 0) continue;
+      if (!Array.isArray(candidates) || candidates.length === 0) continue;
 
-      const first = candidate[0] as Record<string, unknown>;
+      const first = candidates[0] as Record<string, unknown>;
 
-      if (first.finishReason === 'MAX_TOKENS') {
-        throw new Error('생성된 코드가 너무 길어 잘렸습니다. 더 간단한 컴포넌트를 요청해주세요.');
+      if (first.finishReason === 'STOP' || first.finishReason === 'MAX_TOKENS') {
+        if (first.finishReason === 'MAX_TOKENS') {
+          throw new Error('생성된 코드가 너무 길어 잘렸습니다. 더 간단한 컴포넌트를 요청해주세요.');
+        }
+        break;
       }
 
-      const parts =
-        first.content !== null &&
-        typeof first.content === 'object' &&
-        'parts' in (first.content as object)
-          ? ((first.content as Record<string, unknown>).parts as unknown[])
-          : null;
+      const content = first.content as Record<string, unknown> | undefined;
+      if (!content) continue;
 
+      const parts = Array.isArray(content.parts) ? content.parts : null;
       if (!Array.isArray(parts)) continue;
 
       for (const part of parts) {

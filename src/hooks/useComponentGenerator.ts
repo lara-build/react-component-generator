@@ -82,9 +82,6 @@ export function useComponentGenerator(): UseComponentGeneratorReturn {
 
           if (event.type === 'chunk' && typeof event.text === 'string') {
             accumulatedCode += event.text;
-            setComponents((prev) =>
-              prev.map((c) => (c.id === id ? { ...c, code: accumulatedCode } : c))
-            );
           } else if (event.type === 'done') {
             const finalCode = ensureRenderCall(stripCodeFences(accumulatedCode));
             setComponents((prev) =>
