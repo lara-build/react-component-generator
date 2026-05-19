@@ -1,5 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { GeneratedComponent, Provider } from '../types';
+import { loadFromStorage, saveToStorage } from '../utils/storage';
 
 interface UseComponentGeneratorReturn {
   components: GeneratedComponent[];
@@ -11,7 +12,11 @@ interface UseComponentGeneratorReturn {
 }
 
 export function useComponentGenerator(): UseComponentGeneratorReturn {
-  const [components, setComponents] = useState<GeneratedComponent[]>([]);
+  const [components, setComponents] = useState<GeneratedComponent[]>(loadFromStorage);
+
+  useEffect(() => {
+    saveToStorage(components);
+  }, [components]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
