@@ -126,6 +126,15 @@
 
 .composer-panel {
   padding: 24px;
+  display: flex;
+  flex-direction: column;
+}
+
+.prompt-section {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 .settings-panel {
@@ -262,20 +271,17 @@
   color: var(--success);
 }
 
-.prompt-section {
-  width: 100%;
-}
-
 .prompt-form {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: end;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
 }
 
 .prompt-textarea {
-  min-height: 138px;
-  padding: 18px 18px;
+  flex: 1;
+  min-height: max(200px, calc(100vh - 480px));
+  padding: 18px;
   resize: vertical;
   font-size: 1.02rem;
   line-height: 1.65;
@@ -285,18 +291,30 @@
   color: var(--text-soft);
 }
 
+.prompt-form-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.prompt-counter {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
 .btn-generate {
-  height: 52px;
-  padding: 0 22px;
+  height: 36px;
+  padding: 0 16px;
   background: var(--primary);
   border: 1px solid var(--primary);
   border-radius: 8px;
   color: #ffffff;
   cursor: pointer;
-  font-size: 0.98rem;
-  font-weight: 750;
+  font-size: 0.86rem;
+  font-weight: 700;
   white-space: nowrap;
-  box-shadow: 0 10px 22px rgba(37, 99, 235, 0.18);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.18);
   transition:
     background 0.16s ease,
     border-color 0.16s ease,
@@ -677,14 +695,53 @@
 
 .code-block {
   min-height: 320px;
+  max-height: 600px;
   margin: 0;
   padding: 22px;
-  overflow-x: auto;
+  overflow: auto;
   background: #0f172a;
   color: #e2e8f0;
   font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
   font-size: 0.9rem;
   line-height: 1.65;
+}
+
+.streaming-cursor {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  background: #e2e8f0;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+.streaming-badge {
+  margin-left: 8px;
+  padding: 2px 7px;
+  background: #1e3a5f;
+  border-radius: 4px;
+  color: #93c5fd;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  vertical-align: middle;
+}
+
+.tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 @media (max-width: 1080px) {
@@ -720,14 +777,6 @@
   }
 
   .empty-preview {
-    width: 100%;
-  }
-
-  .prompt-form {
-    grid-template-columns: 1fr;
-  }
-
-  .btn-generate {
     width: 100%;
   }
 

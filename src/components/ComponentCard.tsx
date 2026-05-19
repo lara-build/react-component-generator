@@ -13,8 +13,13 @@ interface ComponentCardProps {
 type Tab = 'preview' | 'code';
 
 export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: ComponentCardProps) {
-  const [activeTab, setActiveTab] = useState<Tab>('preview');
+  const isStreaming = component.isStreaming ?? false;
+  // 스트리밍 중에는 항상 'code', 완료 후에는 사용자가 선택한 탭으로 자동 복귀
+  const [preferredTab, setPreferredTab] = useState<Tab>('preview');
+  const activeTab: Tab = isStreaming ? 'code' : preferredTab;
+
   const [previewKey, setPreviewKey] = useState(0);
+
   const createdAt = component.createdAt.toLocaleTimeString('ko-KR', {
     hour: '2-digit',
     minute: '2-digit',
@@ -33,19 +38,21 @@ export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: 
             onClick={() => setPreviewKey((k) => k + 1)}
             title="미리보기 새로고침"
             aria-label="미리보기 새로고침"
+            disabled={isStreaming}
           >
             ↻
           </button>
           <button
             className="btn-regenerate"
             onClick={() => onRegenerate(component.prompt)}
-            disabled={isLoading}
+            disabled={isLoading || isStreaming}
           >
-            {isLoading ? '생성 중...' : '재생성'}
+            {isStreaming ? '생성 중...' : isLoading ? '다른 생성 중' : '재생성'}
           </button>
           <button
             className="btn-remove"
             onClick={() => onRemove(component.id)}
+            disabled={isStreaming}
           >
             삭제
           </button>
@@ -54,13 +61,15 @@ export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: 
       <div className="card-tabs">
         <button
           className={`tab ${activeTab === 'preview' ? 'tab--active' : ''}`}
-          onClick={() => setActiveTab('preview')}
+          onClick={() => setPreferredTab('preview')}
+          disabled={isStreaming}
+          title={isStreaming ? '생성 완료 후 미리보기 사용 가능합니다' : undefined}
         >
           미리보기
         </button>
         <button
           className={`tab ${activeTab === 'code' ? 'tab--active' : ''}`}
-          onClick={() => setActiveTab('code')}
+          onClick={() => setPreferredTab('code')}
         >
           코드
         </button>
@@ -69,7 +78,7 @@ export function ComponentCard({ component, onRemove, onRegenerate, isLoading }: 
         {activeTab === 'preview' ? (
           <LivePreview key={previewKey} code={component.code} />
         ) : (
-          <CodeView code={component.code} />
+          <CodeView code={component.code} isStreaming={isStreaming} />
         )}
       </div>
     </div>
