@@ -90,12 +90,15 @@ async function callAnthropic(prompt: string, apiKey: string): Promise<string> {
 }
 
 async function callGoogle(prompt: string, apiKey: string): Promise<string> {
-  const model = 'gemini-2.5-flash';
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const model = 'gemini-3.1-flash-lite';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
       contents: [{ role: 'user', parts: [{ text: prompt }] }],
@@ -143,6 +146,154 @@ function ensureRenderCall(code: string): string {
   return code;
 }
 
+async function* streamAnthropic(prompt: string, apiKey: string): AsyncGenerator<string> {
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 4096,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: prompt }],
+      stream: true,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Claude API error: ${response.status}`);
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop()!;
+
+    for (const event of events) {
+      const dataLine = event.split('\n').find((l) => l.startsWith('data: '));
+      if (!dataLine) continue;
+
+      const raw = dataLine.slice(6).trim();
+      if (raw === '[DONE]') return;
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        continue;
+      }
+
+      if (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        'type' in parsed &&
+        (parsed as Record<string, unknown>).type === 'content_block_delta' &&
+        'delta' in parsed
+      ) {
+        const delta = (parsed as Record<string, unknown>).delta as Record<string, unknown>;
+        if (delta.type === 'text_delta' && typeof delta.text === 'string') {
+          yield delta.text;
+        }
+      }
+    }
+  }
+}
+
+async function* streamGoogle(prompt: string, apiKey: string): AsyncGenerator<string> {
+  const model = 'gemini-3.1-flash-lite';
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-goog-api-key': apiKey,
+    },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: SYSTEM_PROMPT }] },
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: 8192 },
+    }),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Gemini API error: ${response.status}`);
+  }
+
+  const reader = response.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split('\n\n');
+    buffer = events.pop()!;
+
+    for (const event of events) {
+      const dataLine = event.split('\n').find((l) => l.startsWith('data: '));
+      if (!dataLine) continue;
+
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(dataLine.slice(6).trim());
+      } catch {
+        continue;
+      }
+
+      const candidate =
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        'candidates' in parsed
+          ? (parsed as Record<string, unknown>).candidates
+          : null;
+
+      if (!Array.isArray(candidate) || candidate.length === 0) continue;
+
+      const first = candidate[0] as Record<string, unknown>;
+
+      if (first.finishReason === 'MAX_TOKENS') {
+        throw new Error('생성된 코드가 너무 길어 잘렸습니다. 더 간단한 컴포넌트를 요청해주세요.');
+      }
+
+      const parts =
+        first.content !== null &&
+        typeof first.content === 'object' &&
+        'parts' in (first.content as object)
+          ? ((first.content as Record<string, unknown>).parts as unknown[])
+          : null;
+
+      if (!Array.isArray(parts)) continue;
+
+      for (const part of parts) {
+        if (typeof (part as Record<string, unknown>).text === 'string') {
+          yield (part as Record<string, unknown>).text as string;
+        }
+      }
+    }
+  }
+}
+
+const SSE_HEADERS = {
+  ...CORS_HEADERS,
+  'Content-Type': 'text/event-stream',
+  'Cache-Control': 'no-cache',
+  'Connection': 'keep-alive',
+  'X-Accel-Buffering': 'no',
+};
+
 const server = Bun.serve({
   port: 3002,
   async fetch(req) {
@@ -164,6 +315,66 @@ const server = Bun.serve({
       );
     }
 
+    if (req.method === 'POST' && url.pathname === '/api/generate-stream') {
+      let requestBody: { prompt?: unknown; apiKey?: unknown; provider?: unknown };
+      try {
+        requestBody = (await req.json()) as typeof requestBody;
+      } catch {
+        return Response.json({ error: 'Invalid JSON' }, { status: 400, headers: CORS_HEADERS });
+      }
+
+      const { prompt, apiKey, provider = 'anthropic' } = requestBody;
+
+      if (provider !== 'anthropic' && provider !== 'google') {
+        return Response.json(
+          { error: 'PROVIDER_NOT_SUPPORTED', details: `Provider must be 'anthropic' or 'google'` },
+          { status: 400, headers: CORS_HEADERS }
+        );
+      }
+
+      if (!prompt || typeof prompt !== 'string' || prompt.length > 2000) {
+        return Response.json(
+          { error: 'INVALID_PROMPT', details: 'Prompt must be between 1 and 2000 characters' },
+          { status: 400, headers: CORS_HEADERS }
+        );
+      }
+
+      const resolvedKey = resolveApiKey(provider as Provider, typeof apiKey === 'string' ? apiKey : undefined);
+
+      if (!resolvedKey) {
+        return Response.json(
+          { error: `API key is required. Set ${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'GOOGLE_API_KEY'} in .env or enter it manually.` },
+          { status: 400, headers: CORS_HEADERS }
+        );
+      }
+
+      const encode = (obj: object) =>
+        new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`);
+
+      const generator =
+        provider === 'google'
+          ? streamGoogle(prompt, resolvedKey)
+          : streamAnthropic(prompt, resolvedKey);
+
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const text of generator) {
+              controller.enqueue(encode({ type: 'chunk', text }));
+            }
+            controller.enqueue(encode({ type: 'done' }));
+          } catch (err) {
+            const message = err instanceof Error ? err.message : 'Unknown error';
+            controller.enqueue(encode({ type: 'error', message }));
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, { headers: SSE_HEADERS });
+    }
+
     if (req.method === 'POST' && url.pathname === '/api/generate') {
       try {
         const { prompt, apiKey, provider = 'anthropic' } = (await req.json()) as {
@@ -172,18 +383,25 @@ const server = Bun.serve({
           provider?: Provider;
         };
 
+        if (provider !== 'anthropic' && provider !== 'google') {
+          return Response.json(
+            { error: 'PROVIDER_NOT_SUPPORTED', details: `Provider must be 'anthropic' or 'google'` },
+            { status: 400, headers: CORS_HEADERS }
+          );
+        }
+
+        if (!prompt || prompt.length > 2000) {
+          return Response.json(
+            { error: 'INVALID_PROMPT', details: 'Prompt must be between 1 and 2000 characters' },
+            { status: 400, headers: CORS_HEADERS }
+          );
+        }
+
         const resolvedKey = resolveApiKey(provider, apiKey);
 
         if (!resolvedKey) {
           return Response.json(
             { error: `API key is required. Set ${provider === 'anthropic' ? 'ANTHROPIC_API_KEY' : 'GOOGLE_API_KEY'} in .env or enter it manually.` },
-            { status: 400, headers: CORS_HEADERS }
-          );
-        }
-
-        if (!prompt) {
-          return Response.json(
-            { error: 'Prompt is required' },
             { status: 400, headers: CORS_HEADERS }
           );
         }

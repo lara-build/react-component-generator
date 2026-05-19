@@ -16,7 +16,8 @@ export function loadFromStorage(): GeneratedComponent[] {
 
 export function saveToStorage(components: GeneratedComponent[]): void {
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(components));
+    const toSave = components.filter((c) => !c.isStreaming);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(toSave));
   } catch {
     // 시크릿 모드 또는 용량 초과 시 무시
   }
