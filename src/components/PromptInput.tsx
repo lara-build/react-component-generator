@@ -40,24 +40,26 @@ export function PromptInput({ onGenerate, isLoading }: PromptInputProps) {
           onChange={(e) => setPrompt(e.target.value)}
           placeholder="예: 고객 목록 테이블 위에 들어갈 검색 필터 바를 만들어줘. 상태, 담당자, 날짜 범위 필터가 필요해."
           className="prompt-textarea"
-          rows={3}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               handleSubmit(e);
             }
           }}
         />
-        <button
-          type="submit"
-          className="btn-generate"
-          disabled={!prompt.trim() || isLoading}
-        >
-          {isLoading ? (
-            <span className="loading-spinner">생성 중...</span>
-          ) : (
-            '컴포넌트 생성'
-          )}
-        </button>
+        <div className="prompt-form-footer">
+          <div className="prompt-counter">{prompt.length} 글자</div>
+          <button
+            type="submit"
+            className="btn-generate"
+            disabled={!prompt.trim() || isLoading}
+          >
+            {isLoading ? (
+              <span className="loading-spinner">생성 중...</span>
+            ) : (
+              '생성'
+            )}
+          </button>
+        </div>
       </form>
       <div className="prompt-examples">
         <span className="examples-label">예시 프롬프트</span>
