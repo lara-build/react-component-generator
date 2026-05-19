@@ -4,7 +4,7 @@ Central governance rules for AI agents operating in this React Component Generat
 
 ## Operational Commands
 
-These commands are the only supported workflows:
+These commands are the ONLY supported workflows:
 
 ```bash
 # Install & Setup
@@ -86,4 +86,7 @@ When extending AI providers or changing the generation strategy, ensure this fil
 
 ## Context Map
 
-No nested AGENTS.md files required. All rules apply globally.
+Nested AGENTS.md files provide framework-specific rules:
+
+- **[Frontend Development (React + Vite)](./src/AGENTS.md)** — UI components, hooks, state management, react-live integration.
+- **[Backend API Server (Bun)](./server/AGENTS.md)** — AI provider proxying, environment configuration, request/response handling.
