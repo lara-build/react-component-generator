@@ -18,6 +18,7 @@ function App() {
     anthropic: false,
     google: false,
   });
+  const [configError, setConfigError] = useState<string | null>(null);
   const { components, isLoading, error, generate, removeComponent, clearAll } =
     useComponentGenerator();
 
@@ -25,16 +26,20 @@ function App() {
     fetch('/api/config')
       .then((res) => res.json())
       .then((data) => setEnvKeys(data.envKeys))
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('/api/config 요청 실패 — 기본값으로 초기화합니다.', err);
+        setEnvKeys({ anthropic: false, google: false });
+      });
   }, []);
 
   const hasEnvKey = envKeys[provider];
 
   const handleGenerate = (prompt: string) => {
     if (!apiKey.trim() && !hasEnvKey) {
-      alert(`${PROVIDER_CONFIG[provider].label} API 키를 입력하거나 .env에 설정해주세요.`);
+      setConfigError(`${PROVIDER_CONFIG[provider].label} API 키를 입력하거나 .env에 설정해주세요.`);
       return;
     }
+    setConfigError(null);
     generate(prompt, apiKey || undefined, provider);
   };
 
@@ -121,9 +126,9 @@ function App() {
         </aside>
       </main>
 
-      {error && (
+      {(error || configError) && (
         <div className="error-banner">
-          <p>{error}</p>
+          <p>{error || configError}</p>
         </div>
       )}
 
